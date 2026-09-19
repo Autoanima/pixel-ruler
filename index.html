@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>像素尺 Pixel Ruler</title>
+<meta name="description" content="在手機瀏覽器裡選一張截圖，拖曳畫出方框，立刻讀出精確的像素座標（X / Y / 寬 / 高），方便貼到 iOS 捷徑的「裁剪影像」動作。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f5f2eb;
+    --surface:#ffffff;
+    --surface-2:#eeeade;
+    --border:#ddd6c4;
+    --text:#211d15;
+    --text-dim:#75705f;
+    --accent:#2f5eea;
+    --accent-ink:#ffffff;
+    --accent-soft:#e6ecff;
+    --danger:#c4432c;
+    --mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --sans:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#111216;
+      --surface:#1a1c21;
+      --surface-2:#212329;
+      --border:#2d2f37;
+      --text:#eeeee9;
+      --text-dim:#9a978d;
+      --accent:#7c9cff;
+      --accent-ink:#0d1224;
+      --accent-soft:#1e2540;
+      --danger:#e37a63;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#111216;
+    --surface:#1a1c21;
+    --surface-2:#212329;
+    --border:#2d2f37;
+    --text:#eeeee9;
+    --text-dim:#9a978d;
+    --accent:#7c9cff;
+    --accent-ink:#0d1224;
+    --accent-soft:#1e2540;
+    --danger:#e37a63;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    -webkit-tap-highlight-color:transparent;
+    padding-top:env(safe-area-inset-top, 0px);
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+  }
+  img{max-width:100%;}
+  [hidden]{display:none !important;}
+
+  .page{
+    max-width:520px;
+    margin:0 auto;
+    padding:20px 16px 48px;
+    display:flex;
+    flex-direction:column;
+    gap:22px;
+  }
+
+  .head{display:flex;flex-direction:column;gap:6px;}
+  .eyebrow{
+    margin:0;
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.11em;
+    text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{
+    margin:0;
+    font-size:30px;
+    font-weight:800;
+    letter-spacing:-.01em;
+    text-wrap:balance;
+  }
+  .sub{
+    margin:0;
+    font-size:14.5px;
+    line-height:1.55;
+    color:var(--text-dim);
+    max-width:46ch;
+  }
+
+  /* upload zone */
+  .upload{
+    position:relative;
+    border:1.5px dashed var(--border);
+    border-radius:16px;
+    background:var(--surface);
+    padding:34px 20px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    text-align:center;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .upload:active{border-color:var(--accent);background:var(--accent-soft);}
+  .upload svg{width:34px;height:34px;color:var(--accent);}
+  .upload-title{margin:0;font-size:15.5px;font-weight:700;}
+  .upload-sub{margin:0;font-size:13px;color:var(--text-dim);}
+  .upload input[type="file"]{
+    position:absolute;inset:0;
+    opacity:0;
+    width:100%;height:100%;
+    cursor:pointer;
+  }
+
+  /* canvas stage */
+  .canvas-wrap{
+    border:1px solid var(--border);
+    border-radius:16px;
+    overflow:hidden;
+    background:var(--surface-2);
+    box-shadow:0 1px 2px rgba(0,0,0,.05);
+    line-height:0;
+  }
+  #canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    touch-action:none;
+    cursor:crosshair;
+  }
+
+  .meta{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    font-size:12.5px;
+    color:var(--text-dim);
+  }
+  .meta .size-tag{
+    font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+    background:var(--surface-2);
+    border:1px solid var(--border);
+    border-radius:999px;
+    padding:4px 10px;
+  }
+  .ghost-btn{
+    appearance:none;
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--text);
+    font:inherit;
+    font-size:12.5px;
+    font-weight:600;
+    padding:6px 12px;
+    border-radius:999px;
+    cursor:pointer;
+  }
+  .ghost-btn:active{background:var(--surface-2);}
+
+  .hint{
+    margin:0;
+    font-size:12.5px;
+    line-height:1.6;
+    color:var(--text-dim);
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:10px 12px;
+  }
+
+  /* results */
+  .results{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .field-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  .field{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:10px 12px 12px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .field-label{
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  .field-value-row{
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .field-value-row input{
+    width:100%;
+    min-width:0;
+    font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+    font-size:19px;
+    font-weight:700;
+    color:var(--text);
+    background:transparent;
+    border:none;
+    padding:0;
+  }
+  .field-value-row input:focus{outline:none;}
+  .field-value-row input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px;}
+  .steppers{
+    display:flex;
+    gap:6px;
+  }
+  .stepper-btn{
+    flex:1;
+    appearance:none;
+    border:1px solid var(--border);
+    background:var(--surface-2);
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:12px;
+    font-weight:600;
+    padding:6px 0;
+    border-radius:8px;
+    cursor:pointer;
+  }
+  .stepper-btn:active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+  .stepper-btn:focus-visible, .ghost-btn:focus-visible, .primary-btn:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px;
+  }
+
+  .summary{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:14px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+  }
+  .summary-label{
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+  #summaryText{
+    margin:0;
+    font-family:var(--mono);
+    font-variant-numeric:tabular-nums;
+    font-size:14.5px;
+    line-height:1.7;
+    color:var(--text);
+    white-space:pre;
+    overflow-x:auto;
+  }
+  .primary-btn{
+    appearance:none;
+    border:none;
+    background:var(--accent);
+    color:var(--accent-ink);
+    font:inherit;
+    font-size:14.5px;
+    font-weight:700;
+    padding:12px 16px;
+    border-radius:12px;
+    cursor:pointer;
+    width:100%;
+  }
+  .primary-btn:active{opacity:.85;}
+
+  footer{
+    text-align:center;
+    font-size:11.5px;
+    color:var(--text-dim);
+  }
+  footer a{color:var(--text-dim);}
+
+  .toast{
+    position:fixed;
+    left:50%;
+    bottom:calc(24px + env(safe-area-inset-bottom, 0px));
+    transform:translateX(-50%) translateY(12px);
+    background:var(--text);
+    color:var(--bg);
+    font-size:13px;
+    font-weight:600;
+    padding:9px 16px;
+    border-radius:999px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease;
+    z-index:20;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  @media (prefers-reduced-motion: reduce){
+    .upload, .toast, .stepper-btn, .primary-btn{transition:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header class="head">
+    <p class="eyebrow">螢幕截圖裁切工具</p>
+    <h1>像素尺</h1>
+    <p class="sub">選一張截圖，在上面拖曳畫出範圍，立刻算出精確的像素座標，直接貼到捷徑的「裁剪影像」動作。所有處理都在你的瀏覽器裡完成，圖片不會上傳到任何伺服器。</p>
+  </header>
+
+  <section class="stage">
+    <div class="upload" id="uploadZone">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="3"></rect>
+        <circle cx="9" cy="9" r="1.8"></circle>
+        <path d="M21 15l-5.2-5.2a2 2 0 0 0-2.8 0L4 19"></path>
+      </svg>
+      <p class="upload-title">選擇截圖</p>
+      <p class="upload-sub">從照片圖庫或檔案選取</p>
+      <input type="file" accept="image/*" id="fileInput" aria-label="選擇截圖">
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap" hidden>
+      <canvas id="canvas"></canvas>
+    </div>
+  </section>
+
+  <section class="meta" id="metaRow" hidden>
+    <span class="size-tag" id="imgSizeTag">— × — px</span>
+    <button type="button" class="ghost-btn" id="newImageBtn">選擇其他截圖</button>
+  </section>
+
+  <p class="hint" id="hint" hidden>拖曳可畫出新的裁切框；點框內可整個拖動；下方欄位能微調每個數值。</p>
+
+  <section class="results" id="results" hidden>
+    <div class="field-grid">
+      <div class="field" data-field="x">
+        <label class="field-label" for="inputX">X 座標</label>
+        <div class="field-value-row">
+          <input type="number" inputmode="numeric" id="inputX" value="0">
+        </div>
+        <div class="steppers">
+          <button type="button" class="stepper-btn" data-field="x" data-step="-10">−10</button>
+          <button type="button" class="stepper-btn" data-field="x" data-step="-1">−1</button>
+          <button type="button" class="stepper-btn" data-field="x" data-step="1">+1</button>
+          <button type="button" class="stepper-btn" data-field="x" data-step="10">+10</button>
+        </div>
+      </div>
+      <div class="field" data-field="y">
+        <label class="field-label" for="inputY">Y 座標</label>
+        <div class="field-value-row">
+          <input type="number" inputmode="numeric" id="inputY" value="0">
+        </div>
+        <div class="steppers">
+          <button type="button" class="stepper-btn" data-field="y" data-step="-10">−10</button>
+          <button type="button" class="stepper-btn" data-field="y" data-step="-1">−1</button>
+          <button type="button" class="stepper-btn" data-field="y" data-step="1">+1</button>
+          <button type="button" class="stepper-btn" data-field="y" data-step="10">+10</button>
+        </div>
+      </div>
+      <div class="field" data-field="w">
+        <label class="field-label" for="inputW">寬度 Width</label>
+        <div class="field-value-row">
+          <input type="number" inputmode="numeric" id="inputW" value="0">
+        </div>
+        <div class="steppers">
+          <button type="button" class="stepper-btn" data-field="w" data-step="-10">−10</button>
+          <button type="button" class="stepper-btn" data-field="w" data-step="-1">−1</button>
+          <button type="button" class="stepper-btn" data-field="w" data-step="1">+1</button>
+          <button type="button" class="stepper-btn" data-field="w" data-step="10">+10</button>
+        </div>
+      </div>
+      <div class="field" data-field="h">
+        <label class="field-label" for="inputH">高度 Height</label>
+        <div class="field-value-row">
+          <input type="number" inputmode="numeric" id="inputH" value="0">
+        </div>
+        <div class="steppers">
+          <button type="button" class="stepper-btn" data-field="h" data-step="-10">−10</button>
+          <button type="button" class="stepper-btn" data-field="h" data-step="-1">−1</button>
+          <button type="button" class="stepper-btn" data-field="h" data-step="1">+1</button>
+          <button type="button" class="stepper-btn" data-field="h" data-step="10">+10</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary">
+      <span class="summary-label">貼到捷徑「裁剪影像」</span>
+      <pre id="summaryText">X: 0
+Y: 0
+Width: 0
+Height: 0</pre>
+      <button type="button" class="primary-btn" id="copyAllBtn">複製全部</button>
+    </div>
+  </section>
+
+  <footer>純前端工具，圖片僅在本機瀏覽器內處理，不會被送出或儲存。</footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">已複製</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var fileInput = document.getElementById('fileInput');
+  var uploadZone = document.getElementById('uploadZone');
+  var canvasWrap = document.getElementById('canvasWrap');
+  var canvas = document.getElementById('canvas');
+  var ctx = canvas.getContext('2d');
+  var metaRow = document.getElementById('metaRow');
+  var imgSizeTag = document.getElementById('imgSizeTag');
+  var newImageBtn = document.getElementById('newImageBtn');
+  var hint = document.getElementById('hint');
+  var results = document.getElementById('results');
+  var summaryText = document.getElementById('summaryText');
+  var copyAllBtn = document.getElementById('copyAllBtn');
+  var toast = document.getElementById('toast');
+
+  var inputs = {
+    x: document.getElementById('inputX'),
+    y: document.getElementById('inputY'),
+    w: document.getElementById('inputW'),
+    h: document.getElementById('inputH')
+  };
+
+  var img = null;
+  var natW = 0, natH = 0;
+  var rect = null; // {x,y,w,h} in natural pixel space
+  var drag = null; // {mode:'draw'|'move', startPt, startRect}
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  function loadImageFile(file){
+    if (!file) return;
+    var url = URL.createObjectURL(file);
+    var image = new Image();
+    image.onload = function(){
+      img = image;
+      natW = image.naturalWidth;
+      natH = image.naturalHeight;
+      canvas.width = natW;
+      canvas.height = natH;
+
+      uploadZone.hidden = true;
+      canvasWrap.hidden = false;
+      metaRow.hidden = false;
+      hint.hidden = false;
+      results.hidden = false;
+
+      imgSizeTag.textContent = natW + ' × ' + natH + ' px';
+
+      // sensible starting box: top strip, where a chat header usually sits
+      var startH = Math.round(natH * 0.09);
+      rect = { x: 0, y: 0, w: natW, h: clamp(startH, 20, natH) };
+
+      syncInputsFromRect();
+      redraw();
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = function(){
+      URL.revokeObjectURL(url);
+    };
+    image.src = url;
+  }
+
+  fileInput.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    loadImageFile(f);
+  });
+
+  newImageBtn.addEventListener('click', function(){
+    fileInput.value = '';
+    fileInput.click();
+  });
+
+  function redraw(){
+    if (!img) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, natW, natH);
+    if (rect){
+      ctx.save();
+      ctx.fillStyle = 'rgba(47,94,234,0.22)';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.lineWidth = Math.max(2, natW * 0.0022);
+      ctx.strokeStyle = '#2f5eea';
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+
+      // corner handles
+      var hs = Math.max(6, natW * 0.008);
+      ctx.fillStyle = '#2f5eea';
+      [[rect.x, rect.y],[rect.x+rect.w, rect.y],[rect.x, rect.y+rect.h],[rect.x+rect.w, rect.y+rect.h]].forEach(function(p){
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], hs, 0, Math.PI*2);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+  }
+
+  function getPoint(e){
+    var b = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / b.width;
+    var scaleY = canvas.height / b.height;
+    var cx = (e.clientX - b.left) * scaleX;
+    var cy = (e.clientY - b.top) * scaleY;
+    return { x: clamp(cx, 0, natW), y: clamp(cy, 0, natH) };
+  }
+
+  function pointInRect(pt, r){
+    return pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
+  }
+
+  canvas.addEventListener('pointerdown', function(e){
+    if (!img) return;
+    canvas.setPointerCapture(e.pointerId);
+    var pt = getPoint(e);
+    if (rect && pointInRect(pt, rect)){
+      drag = { mode: 'move', startPt: pt, startRect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h } };
+    } else {
+      rect = { x: pt.x, y: pt.y, w: 0, h: 0 };
+      drag = { mode: 'draw', startPt: pt };
+    }
+    e.preventDefault();
+  });
+
+  canvas.addEventListener('pointermove', function(e){
+    if (!drag || !img) return;
+    var pt = getPoint(e);
+    if (drag.mode === 'draw'){
+      var x0 = drag.startPt.x, y0 = drag.startPt.y;
+      rect.x = Math.min(x0, pt.x);
+      rect.y = Math.min(y0, pt.y);
+      rect.w = Math.abs(pt.x - x0);
+      rect.h = Math.abs(pt.y - y0);
+    } else if (drag.mode === 'move'){
+      var dx = pt.x - drag.startPt.x;
+      var dy = pt.y - drag.startPt.y;
+      rect.x = clamp(drag.startRect.x + dx, 0, natW - drag.startRect.w);
+      rect.y = clamp(drag.startRect.y + dy, 0, natH - drag.startRect.h);
+      rect.w = drag.startRect.w;
+      rect.h = drag.startRect.h;
+    }
+    redraw();
+    syncInputsFromRect();
+    e.preventDefault();
+  });
+
+  function endDrag(e){
+    if (!drag) return;
+    drag = null;
+    if (rect && (rect.w < 2 || rect.h < 2)){
+      rect.w = Math.max(rect.w, 20);
+      rect.h = Math.max(rect.h, 20);
+      redraw();
+    }
+    syncInputsFromRect();
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  function syncInputsFromRect(){
+    if (!rect) return;
+    inputs.x.value = Math.round(rect.x);
+    inputs.y.value = Math.round(rect.y);
+    inputs.w.value = Math.round(rect.w);
+    inputs.h.value = Math.round(rect.h);
+    updateSummary();
+  }
+
+  function syncRectFromInputs(){
+    if (!rect) return;
+    var x = clamp(parseInt(inputs.x.value, 10) || 0, 0, natW);
+    var y = clamp(parseInt(inputs.y.value, 10) || 0, 0, natH);
+    var w = clamp(parseInt(inputs.w.value, 10) || 0, 1, natW - x);
+    var h = clamp(parseInt(inputs.h.value, 10) || 0, 1, natH - y);
+    rect = { x: x, y: y, w: w, h: h };
+    redraw();
+    updateSummary();
+  }
+
+  Object.keys(inputs).forEach(function(k){
+    inputs[k].addEventListener('input', syncRectFromInputs);
+    inputs[k].addEventListener('blur', syncInputsFromRect);
+  });
+
+  document.querySelectorAll('.stepper-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if (!rect) return;
+      var field = btn.getAttribute('data-field');
+      var step = parseInt(btn.getAttribute('data-step'), 10);
+      var cur = parseInt(inputs[field].value, 10) || 0;
+      inputs[field].value = cur + step;
+      syncRectFromInputs();
+      syncInputsFromRect();
+    });
+  });
+
+  function updateSummary(){
+    var x = inputs.x.value, y = inputs.y.value, w = inputs.w.value, h = inputs.h.value;
+    summaryText.textContent = 'X: ' + x + '\nY: ' + y + '\nWidth: ' + w + '\nHeight: ' + h;
+  }
+
+  var toastTimer = null;
+  function showToast(msg){
+    toast.textContent = msg || '已複製';
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toast.classList.remove('show'); }, 1400);
+  }
+
+  function copyText(text){
+    function fallback(){
+      try{
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('已複製');
+      }catch(err){
+        showToast('複製失敗，請手動選取文字');
+      }
+    }
+    try{
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){
+          showToast('已複製');
+        }).catch(fallback);
+      } else {
+        fallback();
+      }
+    }catch(err){
+      fallback();
+    }
+  }
+
+  copyAllBtn.addEventListener('click', function(){
+    copyText(summaryText.textContent);
+  });
+
+})();
+</script>
+</body>
+</html>
